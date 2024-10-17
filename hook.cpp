@@ -6,7 +6,9 @@ using namespace CGHOOK;
 
 extern CRITICAL_SECTION g_CritSection;
 
-extern "C" void HookRoutine();
+extern "C" void* __hook_segment_address;
+extern "C" size_t __hook_segment_size;
+extern "C" size_t __hook_routine_offs;
 
 static char hook_shell_code_64[] = {
 	0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -20,13 +22,13 @@ static char hook_shell_code_64_2[] = {
 
 extern "C" void CGUnHook(HookObject* obj) {
 	DWORD oldProtect;
-
 	EnterCriticalSection(&g_CritSection);
 
 	VirtualProtect(obj->OriginalAddress, obj->BackupSize, PAGE_EXECUTE_READWRITE, &oldProtect);
 	memcpy(obj->OriginalAddress, obj->BackupCode, obj->BackupSize);
 	VirtualProtect(obj->OriginalAddress, obj->BackupSize, oldProtect, &oldProtect);
 
+	VirtualProtect(obj, __hook_segment_size, obj->mem_type, &oldProtect);
 	free(obj);
 
 	LeaveCriticalSection(&g_CritSection);
@@ -34,30 +36,29 @@ extern "C" void CGUnHook(HookObject* obj) {
 
 extern "C" HookObject* CGHook(void* target, WORD id, WORD max_callbacks, bool post, bool ignore) {
 
-	if (max_callbacks == 0) max_callbacks += 1;
-
 	size_t CallBacksSize = (sizeof(void*) * max_callbacks);
 
-	HookObject* temp = (HookObject*)malloc(sizeof(HookObject) + CallBacksSize);
+	HookObject* temp = (HookObject*)malloc(__hook_segment_size + CallBacksSize);
 
 	if (temp) {
 		EnterCriticalSection(&g_CritSection);
 
 		DWORD oldProtect;
-		VirtualProtect(temp, sizeof(HookObject), PAGE_EXECUTE_READWRITE, &oldProtect);
-
+		VirtualProtect(temp, __hook_segment_size, PAGE_EXECUTE_READWRITE, &oldProtect);
+		
 		*(size_t*)((size_t)hook_shell_code_64 + 2) = (size_t)temp;
 
-		temp->HookRoutine = HookRoutine;
+		memcpy(temp, __hook_segment_address, __hook_segment_size);
+
+		temp->HookRoutine = (void*)((size_t)temp + __hook_routine_offs);
 		temp->OriginalAddress = target;
 		temp->Id = id;
-		temp->Flags = 0;
 		temp->Flags |= post ? CGHOOK_FLAG_POST : 0;
 		temp->Flags |= ignore ? CGHOOK_FLAG_IGNORE : 0;
 		temp->MaxCallBacks = max_callbacks;
 		temp->BackupSize = 0;
-
-		memset((void*)((size_t)temp + sizeof(HookObject)), NULL, CallBacksSize);
+		temp->CallBacks = (void**)((size_t)temp + __hook_segment_size);
+		temp->mem_type = oldProtect;
 
 		_CodeInfo ci;
 		_DInst* inst = (_DInst*)malloc(sizeof(_DInst) * 20);

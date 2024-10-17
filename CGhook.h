@@ -12,18 +12,30 @@ namespace CGHOOK {
 
 	typedef struct {
 		void* HookRoutine;
+
 		size_t rsp;
 		size_t rbp;
-		size_t rsi;
 		size_t rax;
+
+		size_t rcx;
+		size_t rdx;
+		size_t r8;
+		size_t r9;
+
 		void* OriginalAddress;
 		void* ReturnAddress;
+
 		WORD Id;
 		WORD Flags;
 		WORD BackupSize;
 		WORD MaxCallBacks;
+
 		BYTE BackupCode[0x30];
-		//void* CallBack_Func[MaxCallBacks];
+
+		void** CallBacks;
+
+		size_t mem_type;
+
 	} HookObject;
 	
 }
